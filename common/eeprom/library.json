@@ -1,0 +1,11 @@
+{
+	"$schema": "https://raw.githubusercontent.com/platformio/platformio-core/develop/platformio/assets/schema/library.json",
+	"name": "eeprom",
+	"version": "v1.0.0",
+
+	"dependencies": {
+		"shift_register": "shift_register"
+	},
+	"platforms": ["avratmel"],
+	"frameworks": ["arduino"]
+}

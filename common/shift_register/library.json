@@ -1,0 +1,11 @@
+{
+	"$schema": "https://raw.githubusercontent.com/platformio/platformio-core/develop/platformio/assets/schema/library.json",
+	"name": "shift_register",
+	"version": "v1.0.0",
+
+	"dependencies": {
+		"SPI": "*"
+	},
+	"platforms": ["avratmel"],
+	"frameworks": ["arduino"]
+}
