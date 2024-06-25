@@ -15,9 +15,8 @@ extern "C" {
 #define HEX_FMT_BUFFER_SIZE \
     (ARRAY_SIZE("000:") + HEX_FMT_ELEMENT_COUNT * ARRAY_SIZE(" 00") + 1)
 
-void format_data_as_hex(char buffer[HEX_FMT_BUFFER_SIZE],
-                        const uint8_t data[HEX_FMT_ELEMENT_COUNT],
-                        const uint16_t base_address);
+void format_data_as_hex(char* const buffer, const uint8_t* const data,
+                        const uint16_t address, const uint8_t size);
 
 #ifdef __cplusplus
 }

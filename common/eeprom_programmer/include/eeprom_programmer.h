@@ -12,7 +12,7 @@ void eeprom_programmer_read(uint8_t* const buffer, const uint16_t base_address,
                             const uint16_t size);
 void eeprom_programmer_write(const uint16_t base_address,
                              const uint8_t* const buffer, const uint16_t size);
-void eeprom_programmer_dump(const uint16_t size);
+void eeprom_programmer_dump(const uint16_t address, const uint16_t size);
 
 #ifdef __cplusplus
 }

@@ -32,6 +32,8 @@ typedef enum {
     SUB,
     STA,
     LDI,
+    ADI,
+    SBI,
     JMP,
     OUT,
     HLT,
@@ -57,6 +59,8 @@ static const uint16_t microcode[INSTRUCTION_COUNT][STEP_COUNT] = {
     [SUB] = {MI | CO, RO | II | CE, IO | MI, RO | BI, EO | AI | SU, 0},
     [STA] = {MI | CO, RO | II | CE, IO | MI, AO | RI, 0},
     [LDI] = {MI | CO, RO | II | CE, IO | AI, 0},
+    [ADI] = {MI | CO, RO | II | CE, IO | BI, EO | AI, 0},
+    [SBI] = {MI | CO, RO | II | CE, IO | BI, EO | AI | SU, 0},
     [JMP] = {MI | CO, RO | II | CE, IO | J, 0},
     [OUT] = {MI | CO, RO | II | CE, AO | OI, 0},
     [HLT] = {MI | CO, RO | II | CE, static_cast<uint16_t>(HL), 0},
@@ -104,7 +108,7 @@ static void program_eeprom(void) {
 
 static void dump_eeprom(void) {
     Serial.println("Reading EEPROM");
-    eeprom_programmer_dump(ARRAY_SIZE(buffer));
+    eeprom_programmer_dump(0, ARRAY_SIZE(buffer));
 }
 
 void setup(void) {

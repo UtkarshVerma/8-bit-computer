@@ -76,23 +76,35 @@ constexpr uint8_t symbols[SYMBOL_COUNT] = {
 
 static uint8_t decode_number(const uint8_t number, const display display,
                              const symbol_type type) {
-    switch (display) {
-        case ONES:
-        case TENS:
-        case HUNDREDS:
-            return number / pow(10, display);
-        case SIGN:
-            switch (type) {
-                case UNSIGNED:
-                    break;
-                case SIGNED:
-                    if ((int8_t)number < 0) {
-                        return symbols[MINUS];
-                    }
-                    break;
-                case SYMBOL_TYPE_COUNT:
-                    __builtin_unreachable();
+    uint8_t magnitude = number;
+    bool is_negative  = false;
+    switch (type) {
+        case UNSIGNED:
+            break;
+        case SIGNED:
+            if ((int8_t)number < 0) {
+                magnitude   = -(int8_t)number;
+                is_negative = true;
             }
+            break;
+        case SYMBOL_TYPE_COUNT:
+            __builtin_unreachable();
+    }
+
+    switch (display) {
+        case HUNDREDS:
+            magnitude /= 10;
+            // fallthrough.
+        case TENS:
+            magnitude /= 10;
+            // fallthrough.
+        case ONES:
+            return symbols[ZERO + (magnitude % 10)];
+        case SIGN:
+            if (is_negative) {
+                return symbols[MINUS];
+            }
+            break;
         case DISPLAY_COUNT:
             __builtin_unreachable();
     }
@@ -111,7 +123,7 @@ static void program_eeprom(void) {
     Serial.print("Programming EEPROM");
     for (unsigned short place = 0; place < DISPLAY_COUNT; ++place) {
         for (unsigned short type = 0; type < SYMBOL_TYPE_COUNT; ++type) {
-            // NOTE: Having a single large buffer exceeds the Nano's RAM.
+            // NOTE: Having a single large buffer exceeds Nano's RAM.
             uint8_t buffer[NUMBER_COUNT];
             generate_data(buffer, (display)place, (symbol_type)type);
 
@@ -126,7 +138,8 @@ static void program_eeprom(void) {
 
 static void dump_eeprom(void) {
     Serial.println("Reading EEPROM");
-    eeprom_programmer_dump(DISPLAY_COUNT * SYMBOL_TYPE_COUNT * NUMBER_COUNT);
+    eeprom_programmer_dump(0,
+                           DISPLAY_COUNT * SYMBOL_TYPE_COUNT * NUMBER_COUNT);
 }
 
 void setup(void) {

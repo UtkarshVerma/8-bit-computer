@@ -49,14 +49,23 @@ void eeprom_programmer_write(const uint16_t address,
     }
 }
 
-void eeprom_programmer_dump(const uint16_t size) {
-    for (uint16_t base = 0; base < size; base += HEX_FMT_ELEMENT_COUNT) {
+void eeprom_programmer_dump(const uint16_t address, const uint16_t size) {
+    uint16_t addr      = address;
+    const uint16_t end = address + size;
+    while (addr < end) {
+        uint8_t increment =
+            HEX_FMT_ELEMENT_COUNT - (addr % HEX_FMT_ELEMENT_COUNT);
+        if (addr == (end & ~(HEX_FMT_ELEMENT_COUNT - 1))) {
+            increment = end - addr;
+        }
+
         uint8_t data[HEX_FMT_ELEMENT_COUNT];
-        eeprom_programmer_read(data, base, ARRAY_SIZE(data));
+        eeprom_programmer_read(data, addr, increment);
 
         char buffer[HEX_FMT_BUFFER_SIZE];
-        format_data_as_hex(buffer, data, base);
-
+        format_data_as_hex(buffer, data, addr, increment);
         Serial.println(buffer);
+
+        addr += increment;
     }
 }
