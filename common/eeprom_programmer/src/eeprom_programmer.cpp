@@ -36,16 +36,16 @@ void eeprom_programmer_read(uint8_t* const buffer, const uint16_t base_address,
 void eeprom_programmer_write(const uint16_t address,
                              const uint8_t* const buffer,
                              const uint16_t size) {
-    for (unsigned int page_base = 0; page_base < size;
-         page_base += EEPROM_PAGE_SIZE) {
-        const unsigned int bound = page_base + EEPROM_PAGE_SIZE > size
-                                       ? size - page_base
-                                       : EEPROM_PAGE_SIZE;
-        for (unsigned int offset = 0; offset < bound; ++offset) {
-            const uint16_t addr = address + page_base + offset;
-            eeprom_write(&eeprom, addr, buffer[addr]);
+    for (uint16_t offset = 0; offset < size; ++offset) {
+        const uint16_t addr = address + offset;
+        eeprom_write(&eeprom, addr, buffer[offset]);
+
+        // Wait if last page write or last write.
+        const uint16_t page_offset_mask = EEPROM_PAGE_SIZE - 1;
+        if ((addr & page_offset_mask) == page_offset_mask ||
+            offset == size - 1) {
+            eeprom_wait(&eeprom);
         }
-        eeprom_wait(&eeprom);
     }
 }
 

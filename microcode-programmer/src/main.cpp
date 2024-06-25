@@ -43,8 +43,8 @@ typedef enum {
     LOWER,
     UPPER,
 
-    WHICH_BYTE_COUNT,
-} which_byte;
+    BYTE_INDEX_COUNT,
+} byte_index;
 
 typedef enum {
     STEP_COUNT = 8,
@@ -62,7 +62,7 @@ static const uint16_t microcode[INSTRUCTION_COUNT][STEP_COUNT] = {
     [HLT] = {MI | CO, RO | II | CE, static_cast<uint16_t>(HL), 0},
 };
 
-static uint8_t buffer[WHICH_BYTE_COUNT * STEP_COUNT * INSTRUCTION_COUNT];
+static uint8_t buffer[BYTE_INDEX_COUNT * STEP_COUNT * INSTRUCTION_COUNT];
 
 // NOTE: This must be packed for the static buffer allocation to work.
 constexpr auto INSTRUCTION_POS = 0;
@@ -80,20 +80,11 @@ static void generate_microcode(void) {
                 reached_last_step = true;
             }
 
-            for (unsigned short wb = 0; wb < WHICH_BYTE_COUNT; ++wb) {
-                uint8_t data;
-                switch ((which_byte)wb) {
-                    case LOWER:
-                        data = micro_instruction & 0xff;
-                        break;
-                    case UPPER:
-                        data = micro_instruction >> 8;
-                        break;
-                    case WHICH_BYTE_COUNT:
-                        __builtin_unreachable();
-                }
+            for (unsigned short bi = 0; bi < BYTE_INDEX_COUNT; ++bi) {
+                const uint8_t byte_pos = bi * 8;
+                uint8_t data = (micro_instruction >> byte_pos) & MASK(7, 0);
 
-                const uint16_t address = wb << BYTE_POS | step << STEP_POS |
+                const uint16_t address = bi << BYTE_POS | step << STEP_POS |
                                          instruction << INSTRUCTION_POS;
                 buffer[address] = data;
             }
@@ -104,7 +95,7 @@ static void generate_microcode(void) {
 static void program_eeprom(void) {
     Serial.print("Programming EEPROM");
     const uint8_t chunk_size = INSTRUCTION_COUNT;
-    for (unsigned int i = 0; i < ARRAY_SIZE(buffer); i += chunk_size) {
+    for (uint16_t i = 0; i < ARRAY_SIZE(buffer); i += chunk_size) {
         eeprom_programmer_write(i, &buffer[i], chunk_size);
         Serial.print(".");
     }
