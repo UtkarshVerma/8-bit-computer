@@ -6,10 +6,6 @@
 #include "eeprom_programmer.h"
 #include "util.h"
 
-constexpr auto INSTRUCTION_MASK = MASK(3, 0);
-constexpr auto STEP_MASK        = MASK(6, 4);
-constexpr auto BYTE_MASK        = MASK(7, 7);
-
 typedef enum {
     FI = BIT(2),   // Flag register in.
     J  = BIT(1),   // Jump.
@@ -40,10 +36,21 @@ typedef enum {
     OUT,
     HLT,
 
-    INSTRUCTION_COUNT,
+    INSTRUCTION_COUNT = 16,
 } instruction;
 
-static const uint16_t microcode[INSTRUCTION_COUNT][8] = {
+typedef enum {
+    LOWER,
+    UPPER,
+
+    WHICH_BYTE_COUNT,
+} which_byte;
+
+typedef enum {
+    STEP_COUNT = 8,
+} step;
+
+static const uint16_t microcode[INSTRUCTION_COUNT][STEP_COUNT] = {
     [NOP] = {MI | CO, RO | II | CE, 0},
     [LDA] = {MI | CO, RO | II | CE, IO | MI, RO | AI, 0},
     [ADD] = {MI | CO, RO | II | CE, IO | MI, RO | BI, EO | AI, 0},
@@ -55,43 +62,67 @@ static const uint16_t microcode[INSTRUCTION_COUNT][8] = {
     [HLT] = {MI | CO, RO | II | CE, static_cast<uint16_t>(HL), 0},
 };
 
-constexpr unsigned int BUFFER_SIZE =
-    (BYTE_MASK | STEP_MASK | INSTRUCTION_MASK) + 1;
-static uint8_t buffer[BUFFER_SIZE];
+static uint8_t buffer[WHICH_BYTE_COUNT * STEP_COUNT * INSTRUCTION_COUNT];
+
+// NOTE: This must be packed for the static buffer allocation to work.
+constexpr auto INSTRUCTION_POS = 0;
+constexpr auto STEP_POS        = 4;
+constexpr auto BYTE_POS        = 7;
 
 static void generate_microcode(void) {
-    Serial.print("Generating microcode");
-    for (unsigned int instruction = 0; instruction < INSTRUCTION_COUNT;
+    for (unsigned short instruction = 0; instruction < INSTRUCTION_COUNT;
          ++instruction) {
-        bool reached_end = false;
-        for (unsigned short step = 0; step < ARRAY_SIZE(microcode[0]);
-             ++step) {
-            uint16_t micro_instruction = microcode[instruction][step];
-            if (reached_end) {
-                micro_instruction = 0;
-            } else if (micro_instruction == 0) {
-                reached_end = true;
+        bool reached_last_step = false;
+        for (unsigned short step = 0; step < STEP_COUNT; ++step) {
+            const uint16_t micro_instruction =
+                reached_last_step ? 0 : microcode[instruction][step];
+            if (micro_instruction == 0) {
+                reached_last_step = true;
             }
 
-            const uint8_t address       = step << 4 | instruction;
-            buffer[address | BYTE_MASK] = micro_instruction >> 8;
-            buffer[address]             = micro_instruction & 0xff;
-        }
+            for (unsigned short wb = 0; wb < WHICH_BYTE_COUNT; ++wb) {
+                uint8_t data;
+                switch ((which_byte)wb) {
+                    case LOWER:
+                        data = micro_instruction & 0xff;
+                        break;
+                    case UPPER:
+                        data = micro_instruction >> 8;
+                        break;
+                    case WHICH_BYTE_COUNT:
+                        __builtin_unreachable();
+                }
 
+                const uint16_t address = wb << BYTE_POS | step << STEP_POS |
+                                         instruction << INSTRUCTION_POS;
+                buffer[address] = data;
+            }
+        }
+    }
+}
+
+static void program_eeprom(void) {
+    Serial.print("Programming EEPROM");
+    const uint8_t chunk_size = INSTRUCTION_COUNT;
+    for (unsigned int i = 0; i < ARRAY_SIZE(buffer); i += chunk_size) {
+        eeprom_programmer_write(i, &buffer[i], chunk_size);
         Serial.print(".");
     }
     Serial.println(" done");
 }
 
+static void dump_eeprom(void) {
+    Serial.println("Reading EEPROM");
+    eeprom_programmer_dump(ARRAY_SIZE(buffer));
+}
+
 void setup(void) {
     Serial.begin(115200);
-    Serial.println();
-
     eeprom_programmer_init();
 
     generate_microcode();
-    eeprom_programmer_write(buffer, ARRAY_SIZE(buffer));
-    eeprom_programmer_dump(ARRAY_SIZE(buffer));
+    program_eeprom();
+    dump_eeprom();
 }
 
 void loop(void) {}
