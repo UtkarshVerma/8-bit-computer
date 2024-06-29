@@ -20,9 +20,9 @@ constexpr uint8_t RAM_OUT = 21;
 constexpr uint8_t SIGNED = 13;
 
 constexpr uint8_t control_signals[] = {
-    MEMORY_IN, RAM_IN, RAM_OUT, RESET, HALT, CLOCK,
+    MEMORY_IN, RAM_IN, RAM_OUT, RESET, HALT,
 };
-constexpr uint8_t config_pins[] = {SIGNED, EEPROM_CE};
+constexpr uint8_t config_pins[] = {SIGNED, EEPROM_CE, CLOCK};
 
 static void pulse_pin(const uint8_t pin) {
     digitalWrite(pin, HIGH);
@@ -49,9 +49,14 @@ static void write_to_ram(const uint8_t address, const uint8_t byte) {
 }
 
 static void write_program(void) {
+    digitalWrite(HALT, HIGH);       // Halt system clock.
+    digitalWrite(EEPROM_CE, HIGH);  // Disable EEPROM.
+
     for (uint8_t i = 0; i < ARRAY_SIZE(program); ++i) {
         write_to_ram(i, program[i]);
     }
+
+    digitalWrite(EEPROM_CE, LOW);  // Enable EEPROM.
 }
 
 void setup(void) {
@@ -62,21 +67,14 @@ void setup(void) {
     for (uint8_t i = 0; i < ARRAY_SIZE(control_signals); ++i) {
         pinMode(control_signals[i], OUTPUT);
     }
-
-    digitalWrite(HALT, HIGH);       // Halt system clock.
-    digitalWrite(CLOCK, LOW);       // Assert our clock.
-    digitalWrite(EEPROM_CE, HIGH);  // Disable EEPROM.
-
-    write_program();
-
-    // Configure the computer.
     for (uint8_t i = 0; i < ARRAY_SIZE(config_pins); ++i) {
         pinMode(config_pins[i], OUTPUT);
     }
-    digitalWrite(SIGNED, LOW);     // Disable signed mode.
-    digitalWrite(EEPROM_CE, LOW);  // Enable EEPROM.
 
-    pulse_pin(RESET);  // Reset the computer.
+    digitalWrite(CLOCK, LOW);  // Assert our clock.
+    write_program();
+    digitalWrite(SIGNED, LOW);  // Disable signed mode.
+    pulse_pin(RESET);           // Reset the computer.
 
     // Deassert the pins.
     for (uint8_t i = 0; i < ARRAY_SIZE(BUS_PINS); ++i) {
