@@ -11,6 +11,8 @@ extern "C" {
 #define MASK(msb, lsb)  ((BIT((msb + 1) - lsb) - 1) << lsb)
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof(arr[0]))
 
+#define POW2(n) BIT(n)
+
 #define HEX_FMT_ELEMENT_COUNT 16
 #define HEX_FMT_BUFFER_SIZE \
     (ARRAY_SIZE("000:") + HEX_FMT_ELEMENT_COUNT * ARRAY_SIZE(" 00") + 1)

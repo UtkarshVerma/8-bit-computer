@@ -3,7 +3,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "eeprom_programmer.h"
+#include "eeprom-programmer.h"
+#include "op-code.h"
 #include "util.h"
 
 typedef enum {
@@ -26,24 +27,8 @@ typedef enum {
 } control_signal;
 
 typedef enum {
-    NOP,
-    LDA,
-    ADD,
-    SUB,
-    STA,
-    LDI,
-    ADI,
-    SBI,
-    JMP,
-    OUT,
-    HLT,
-
-    INSTRUCTION_COUNT = 16,
-} instruction;
-
-typedef enum {
-    LOWER,
-    UPPER,
+    LOWER_BYTE,
+    UPPER_BYTE,
 
     BYTE_INDEX_COUNT,
 } byte_index;
@@ -52,45 +37,159 @@ typedef enum {
     STEP_COUNT = 8,
 } step;
 
-static const uint16_t microcode[INSTRUCTION_COUNT][STEP_COUNT] = {
-    [NOP] = {MI | CO, RO | II | CE, 0},
-    [LDA] = {MI | CO, RO | II | CE, IO | MI, RO | AI, 0},
-    [ADD] = {MI | CO, RO | II | CE, IO | MI, RO | BI, EO | AI, 0},
-    [SUB] = {MI | CO, RO | II | CE, IO | MI, RO | BI, EO | AI | SU, 0},
-    [STA] = {MI | CO, RO | II | CE, IO | MI, AO | RI, 0},
-    [LDI] = {MI | CO, RO | II | CE, IO | AI, 0},
-    [ADI] = {MI | CO, RO | II | CE, IO | BI, EO | AI, 0},
-    [SBI] = {MI | CO, RO | II | CE, IO | BI, EO | AI | SU, 0},
-    [JMP] = {MI | CO, RO | II | CE, IO | J, 0},
-    [OUT] = {MI | CO, RO | II | CE, AO | OI, 0},
-    [HLT] = {MI | CO, RO | II | CE, static_cast<uint16_t>(HL), 0},
+typedef enum {
+    CARRY_FLAG,
+    ZERO_FLAG,
+
+    FLAG_COUNT = 2,
+} flag;
+
+typedef struct {
+    uint8_t buffer[BYTE_INDEX_COUNT][STEP_COUNT][OP_CODE_COUNT];
+} microcode_template;
+
+static const uint16_t fetch_cycle[] = {MI | CO, RO | II | CE};
+
+typedef struct {
+    bool is_conditional;
+
+    // Conditional instructions will only execute on these flags.
+    uint8_t flags;
+
+    // Steps in the microcode after the fetch cycle.
+    uint16_t steps[STEP_COUNT - ARRAY_SIZE(fetch_cycle)];
+} microcode_metadata;
+
+static const microcode_metadata microcode[OP_CODE_COUNT] = {
+    [NOP] =
+        {
+               .is_conditional = false,
+               .flags          = 0,
+               .steps          = {0, 0, 0, 0, 0, 0},
+               },
+    [LDA] =
+        {
+               .is_conditional = false,
+               .flags          = 0,
+               .steps          = {IO | MI, RO | AI, 0, 0, 0, 0},
+               },
+    [ADD] =
+        {
+               .is_conditional = false,
+               .flags          = 0,
+               .steps          = {IO | MI, RO | BI, EO | AI | FI, 0, 0, 0},
+               },
+    [SUB] =
+        {
+               .is_conditional = false,
+               .flags          = 0,
+               .steps          = {IO | MI, RO | BI, EO | AI | SU | FI, 0, 0, 0},
+               },
+
+    [STA] =
+        {
+               .is_conditional = false,
+               .flags          = 0,
+               .steps          = {IO | MI, AO | RI, 0, 0, 0, 0},
+               },
+
+    [LDI] =
+        {
+               .is_conditional = false,
+               .flags          = 0,
+               .steps          = {IO | AI, 0, 0, 0, 0, 0},
+               },
+
+    [ADI] =
+        {
+               .is_conditional = false,
+               .flags          = 0,
+               .steps          = {IO | BI, EO | AI | FI, 0, 0, 0, 0},
+               },
+    [SBI] =
+        {
+               .is_conditional = false,
+               .flags          = 0,
+               .steps          = {IO | BI, EO | AI | SU | FI, 0, 0, 0, 0},
+               },
+    [JMP] =
+        {
+               .is_conditional = false,
+               .flags          = 0,
+               .steps          = {IO | J, 0, 0, 0, 0, 0},
+               },
+    [JC] =
+        {
+               .is_conditional = true,
+               .flags          = BIT(CARRY_FLAG),
+               .steps          = {IO | J, 0, 0, 0, 0, 0},
+               },
+    [JZ] =
+        {
+               .is_conditional = true,
+               .flags          = BIT(ZERO_FLAG),
+               .steps          = {IO | J, 0, 0, 0, 0, 0},
+               },
+
+    [OUT] =
+        {
+               .is_conditional = false,
+               .flags          = 0,
+               .steps          = {AO | OI, 0, 0, 0, 0, 0},
+               },
+    [HLT] =
+        {
+               .is_conditional = false,
+               .flags          = 0,
+               .steps          = {static_cast<uint16_t>(HL), 0, 0, 0, 0, 0},
+               },
 };
 
-static uint8_t buffer[BYTE_INDEX_COUNT * STEP_COUNT * INSTRUCTION_COUNT];
+static uint8_t get_byte(const uint16_t micro_instruction,
+                        const byte_index byte_index) {
+    const uint8_t byte_pos = byte_index * 8;
 
-// NOTE: This must be packed for the static buffer allocation to work.
-constexpr auto INSTRUCTION_POS = 0;
-constexpr auto STEP_POS        = 4;
-constexpr auto BYTE_POS        = 7;
+    return (micro_instruction >> byte_pos) & MASK(7, 0);
+}
 
-static void generate_microcode(void) {
-    for (unsigned short instruction = 0; instruction < INSTRUCTION_COUNT;
-         ++instruction) {
-        bool reached_last_step = false;
+static void fill_template(microcode_template* const buffer) {
+    for (unsigned short op_code = 0; op_code < OP_CODE_COUNT; ++op_code) {
+        const microcode_metadata metadata = microcode[op_code];
+
         for (unsigned short step = 0; step < STEP_COUNT; ++step) {
             const uint16_t micro_instruction =
-                reached_last_step ? 0 : microcode[instruction][step];
-            if (micro_instruction == 0) {
-                reached_last_step = true;
-            }
+                step < ARRAY_SIZE(fetch_cycle) ? fetch_cycle[step]
+                : metadata.is_conditional
+                    ? 0
+                    : metadata.steps[step - ARRAY_SIZE(fetch_cycle)];
 
             for (unsigned short bi = 0; bi < BYTE_INDEX_COUNT; ++bi) {
-                const uint8_t byte_pos = bi * 8;
-                uint8_t data = (micro_instruction >> byte_pos) & MASK(7, 0);
+                buffer->buffer[bi][step][op_code] =
+                    get_byte(micro_instruction, (byte_index)bi);
+            }
+        }
+    }
+}
 
-                const uint16_t address = bi << BYTE_POS | step << STEP_POS |
-                                         instruction << INSTRUCTION_POS;
-                buffer[address] = data;
+static void update_template(microcode_template* const buffer,
+                            const uint8_t flags) {
+    if (flags == 0) {
+        return;
+    }
+
+    for (unsigned short op_code = 0; op_code < OP_CODE_COUNT; ++op_code) {
+        const microcode_metadata metadata = microcode[op_code];
+        if (!metadata.is_conditional) {
+            continue;
+        }
+
+        for (unsigned short step = 0; step < ARRAY_SIZE(metadata.steps);
+             ++step) {
+            const uint16_t micro_instruction =
+                (flags & metadata.flags) != 0 ? metadata.steps[step] : 0;
+            for (unsigned short bi = 0; bi < BYTE_INDEX_COUNT; ++bi) {
+                buffer->buffer[bi][ARRAY_SIZE(fetch_cycle) + step][op_code] =
+                    get_byte(micro_instruction, (byte_index)bi);
             }
         }
     }
@@ -98,9 +197,15 @@ static void generate_microcode(void) {
 
 static void program_eeprom(void) {
     Serial.print("Programming EEPROM");
-    const uint8_t chunk_size = INSTRUCTION_COUNT;
-    for (uint16_t i = 0; i < ARRAY_SIZE(buffer); i += chunk_size) {
-        eeprom_programmer_write(i, &buffer[i], chunk_size);
+
+    microcode_template buffer;
+    fill_template(&buffer);
+
+    for (unsigned short flag_mask = 0; flag_mask < POW2(FLAG_COUNT);
+         ++flag_mask) {
+        update_template(&buffer, flag_mask);
+        eeprom_programmer_write(flag_mask * sizeof(microcode_template),
+                                (const uint8_t*)buffer.buffer, sizeof(buffer));
         Serial.print(".");
     }
     Serial.println(" done");
@@ -108,14 +213,13 @@ static void program_eeprom(void) {
 
 static void dump_eeprom(void) {
     Serial.println("Reading EEPROM");
-    eeprom_programmer_dump(0, ARRAY_SIZE(buffer));
+    eeprom_programmer_dump(0, POW2(FLAG_COUNT) * sizeof(microcode_template));
 }
 
 void setup(void) {
     Serial.begin(115200);
     eeprom_programmer_init();
 
-    generate_microcode();
     program_eeprom();
     dump_eeprom();
 }

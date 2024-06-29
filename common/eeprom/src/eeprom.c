@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "shift_register.h"
+#include "shift-register.h"
 #include "util.h"
 
 static uint8_t last_byte;

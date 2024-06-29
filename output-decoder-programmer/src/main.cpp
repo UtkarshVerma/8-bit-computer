@@ -3,7 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "eeprom_programmer.h"
+#include "eeprom-programmer.h"
 #include "util.h"
 
 typedef enum {
@@ -55,9 +55,6 @@ typedef enum {
     NUMBER_COUNT = 256,
 } number;
 
-constexpr auto DISPLAY_POS     = 8;
-constexpr auto SYMBOL_TYPE_POS = 10;
-
 constexpr uint8_t symbols[SYMBOL_COUNT] = {
     [ZERO]  = A | B | C | D | E | F,
     [ONE]   = B | C,
@@ -73,6 +70,9 @@ constexpr uint8_t symbols[SYMBOL_COUNT] = {
     [DECIMAL] = DOT,
     [MINUS]   = G,
 };
+
+constexpr auto DISPLAY_POS     = 8;
+constexpr auto SYMBOL_TYPE_POS = 10;
 
 static uint8_t decode_number(const uint8_t number, const display display,
                              const symbol_type type) {
@@ -94,10 +94,10 @@ static uint8_t decode_number(const uint8_t number, const display display,
     switch (display) {
         case HUNDREDS:
             magnitude /= 10;
-            // fallthrough.
+            // Fallthrough.
         case TENS:
             magnitude /= 10;
-            // fallthrough.
+            // Fallthrough.
         case ONES:
             return symbols[ZERO + (magnitude % 10)];
         case SIGN:

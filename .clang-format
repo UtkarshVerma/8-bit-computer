@@ -8,3 +8,4 @@ AlignConsecutiveAssignments: Consecutive
 AllowShortFunctionsOnASingleLine: Empty
 AllowShortLoopsOnASingleLine: false
 AllowShortIfStatementsOnASingleLine: Never
+AlignArrayOfStructures: Left

@@ -7,7 +7,7 @@ extern "C" {
 
 #include <stdint.h>
 
-#include "shift_register.h"
+#include "shift-register.h"
 
 #define EEPROM_PAGE_SIZE 64
 

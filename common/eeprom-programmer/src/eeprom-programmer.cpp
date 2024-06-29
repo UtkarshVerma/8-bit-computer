@@ -1,11 +1,11 @@
-#include "eeprom_programmer.h"
+#include "eeprom-programmer.h"
 
 #include <Arduino.h>
 #include <HardwareSerial.h>
 #include <stdint.h>
 
 #include "eeprom.h"
-#include "shift_register.h"
+#include "shift-register.h"
 #include "util.h"
 
 static const shift_register_config address_shifter = {
